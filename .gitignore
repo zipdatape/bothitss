@@ -1,0 +1,19 @@
+# .NET build output
+bin/
+obj/
+
+# Config con datos sensibles (se genera en tiempo de ejecución)
+config.json
+
+# Carpeta interna de Claude Code
+.claude/
+
+# VS / Rider
+.vs/
+*.user
+*.suo
+.idea/
+
+# OS
+Thumbs.db
+desktop.ini
