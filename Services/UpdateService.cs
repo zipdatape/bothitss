@@ -73,7 +73,7 @@ public static class UpdateService
     {
         if (!string.IsNullOrEmpty(release.ExeUrl))
         {
-            await DownloadAndReplaceAsync(release.ExeUrl, log);
+            await DownloadAndReplaceAsync(release.ExeUrl, release.PageUrl, log);
         }
         else
         {
@@ -87,7 +87,23 @@ public static class UpdateService
         }
     }
 
-    private static async Task DownloadAndReplaceAsync(string exeUrl, Action<string> log)
+    /// <summary>Si existe el marcador de "actualización en curso", la reemplazo falló. Devuelve la URL de la release para abrir.</summary>
+    public static string? ConsumeFailedUpdateMarker()
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(Environment.ProcessPath!);
+            if (string.IsNullOrEmpty(dir)) return null;
+            var marker = Path.Combine(dir, ".updating_to");
+            if (!File.Exists(marker)) return null;
+            var url = File.ReadAllText(marker).Trim();
+            File.Delete(marker);
+            return string.IsNullOrEmpty(url) ? null : url;
+        }
+        catch { return null; }
+    }
+
+    private static async Task DownloadAndReplaceAsync(string exeUrl, string pageUrl, Action<string> log)
     {
         try
         {
@@ -99,20 +115,30 @@ public static class UpdateService
             var data = await _http.GetByteArrayAsync(exeUrl);
             await File.WriteAllBytesAsync(newExe, data);
 
-            // Script bat que espera a que el proceso termine, reemplaza el exe y reinicia
+            // Marcador: si el reemplazo falla, al reiniciar no volver a ofrecer la actualización en bucle
+            var markerPath = Path.Combine(dir, ".updating_to");
+            await File.WriteAllTextAsync(markerPath, pageUrl);
+
+            // Bat: esperar a que el proceso termine, reemplazar; solo reiniciar si move tuvo éxito.
+            // Si move falla (ej. sin permisos), no reiniciamos el exe antiguo → se evita el bucle.
             var batPath = Path.Combine(Path.GetTempPath(), "bothitss_updater.bat");
             var pid     = Environment.ProcessId;
-
             await File.WriteAllTextAsync(batPath,
-                $"@echo off\r\n" +
-                $":wait\r\n" +
+                "@echo off\r\n" +
+                "timeout /t 2 /nobreak >nul\r\n" +
+                ":wait\r\n" +
                 $"tasklist /fi \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul\r\n" +
-                $"if not errorlevel 1 (timeout /t 1 /nobreak >nul & goto wait)\r\n" +
+                "if not errorlevel 1 (timeout /t 1 /nobreak >nul & goto wait)\r\n" +
                 $"move /y \"{newExe}\" \"{currentExe}\"\r\n" +
-                $"start \"\" \"{currentExe}\"\r\n" +
-                $"del \"%~f0\"\r\n");
+                "if errorlevel 1 (\r\n" +
+                "  start \"\" \"" + pageUrl.Replace("\"", "") + "\"\r\n" +
+                ") else (\r\n" +
+                "  del \"" + markerPath + "\" 2>nul\r\n" +
+                "  start \"\" \"" + currentExe + "\"\r\n" +
+                ")\r\n" +
+                "del \"%~f0\"\r\n");
 
-            log("Aplicando actualización. La aplicación se reiniciará...");
+            log("Aplicando actualización. La aplicación se cerrará...");
 
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {

@@ -203,6 +203,25 @@ public class MainForm : Form
             _configPanel.LoadFrom(cfg);
             Log("Configuración cargada. Revisa las rutas y el asunto (ej. CESE DE PERSONAL - ).");
 
+            // Si la actualización automática falló (ej. sin permisos), no volver a ofrecer en bucle
+            var failedUpdateUrl = UpdateService.ConsumeFailedUpdateMarker();
+            if (!string.IsNullOrEmpty(failedUpdateUrl))
+            {
+                Log("La actualización automática no pudo aplicarse (posible falta de permisos en la carpeta de instalación).");
+                MessageBox.Show(
+                    "La actualización automática no pudo completarse (por ejemplo, falta de permisos de escritura en la carpeta de instalación).\n\nSe abrirá la página de descarga para que puedas actualizar manualmente.",
+                    "Actualización manual",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    { FileName = failedUpdateUrl, UseShellExecute = true });
+                }
+                catch { }
+                return;
+            }
+
             await CheckForUpdatesAsync();
         };
     }
