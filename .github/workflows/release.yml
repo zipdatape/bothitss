@@ -9,6 +9,8 @@ on:
 jobs:
   build-and-release:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,7 +43,7 @@ jobs:
         with:
           name: Release ${{ github.ref_name }}
           draft: false
-          generate_release_notes: true
+          generate_release_notes: false
           files: |
             dist/NotificadorBajasHitss-${{ steps.version.outputs.VERSION }}.msi
             publish/NotificadorBajasHitss.exe
