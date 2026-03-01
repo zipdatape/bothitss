@@ -1,131 +1,236 @@
 using System.Runtime.InteropServices;
-using Microsoft.Office.Interop.Outlook;
 
 namespace NotificadorBajasHitssApp.Services;
 
+/// <summary>
+/// Servicio de Outlook usando COM late-binding (dynamic).
+/// No requiere Microsoft.Office.Interop.Outlook ni office.dll en el GAC.
+/// Compatible con todas las versiones de Outlook (2013/2016/2019/365 MSI y Click-to-Run).
+/// </summary>
 public class OutlookService : IDisposable
 {
-    private Microsoft.Office.Interop.Outlook.Application? _app;
+    // OlItemType.olMailItem = 0  (para CreateItem)
+    // OlObjectClass.olMail  = 43 (para verificar tipo de ítem)
+    private const int OlMailItem  = 0;
+    private const int OlMailClass = 43;
 
-    public void Log(string message, Action<string>? log = null) => log?.Invoke(message);
+    private dynamic? _app;
 
-    /// <summary>Busca el primer correo no leído, con adjunto, cuyo asunto contenga asuntoBusqueda.</summary>
-    /// <returns>Ruta del archivo adjunto guardado, o null si no se encontró.</returns>
-    public string? BuscarYGuardarAdjunto(string carpetaOutlook, string asuntoBusqueda, string carpetaDestino, Action<string>? log = null)
+    // ── Detección de Outlook y cuentas ───────────────────────────────────────
+
+    /// <summary>Devuelve true si Outlook está instalado y registrado como COM.</summary>
+    public static bool OutlookDisponible()
+        => Type.GetTypeFromProgID("Outlook.Application") != null;
+
+    /// <summary>Devuelve las cuentas SMTP configuradas en el perfil de Outlook activo.</summary>
+    public static List<string> ObtenerCuentas()
+    {
+        var lista = new List<string>();
+        try
+        {
+            var t = Type.GetTypeFromProgID("Outlook.Application");
+            if (t == null) return lista;
+
+            dynamic app = Activator.CreateInstance(t)!;
+            var ns       = app.GetNamespace("MAPI");
+            var accounts = ns.Accounts;
+            int total    = (int)accounts.Count;
+
+            for (int i = 1; i <= total; i++)
+            {
+                var acc   = accounts[i];
+                var smtp  = (string)acc.SmtpAddress;
+                var name  = (string)acc.DisplayName;
+                lista.Add(string.IsNullOrWhiteSpace(smtp) ? name : $"{name} <{smtp}>");
+            }
+            Marshal.ReleaseComObject(app);
+        }
+        catch { /* Outlook no disponible o sin perfil */ }
+        return lista;
+    }
+
+    /// <summary>Devuelve los nombres de las carpetas raíz (cuentas/almacenes) de Outlook para elegir en qué cuenta buscar.</summary>
+    public static List<string> ObtenerCarpetasRaiz()
+    {
+        var lista = new List<string>();
+        try
+        {
+            var t = Type.GetTypeFromProgID("Outlook.Application");
+            if (t == null) return lista;
+
+            dynamic app = Activator.CreateInstance(t)!;
+            var ns     = app.GetNamespace("MAPI");
+            var roots  = ns.Folders;
+            int total  = (int)roots.Count;
+
+            for (int i = 1; i <= total; i++)
+            {
+                var folder = roots[i];
+                var name   = (string)folder.Name;
+                if (!string.IsNullOrWhiteSpace(name))
+                    lista.Add(name.Trim());
+            }
+            Marshal.ReleaseComObject(app);
+        }
+        catch { /* Outlook no disponible o sin perfil */ }
+        return lista;
+    }
+
+    // ── Búsqueda de correo y guardado del adjunto ─────────────────────────────
+
+    public string? BuscarYGuardarAdjunto(
+        string carpetaOutlook,
+        string asuntoBusqueda,
+        string carpetaDestino,
+        string? cuentaOutlook = null,
+        Action<string>? log = null)
     {
         try
         {
-            _app = new Microsoft.Office.Interop.Outlook.Application();
+            var t = Type.GetTypeFromProgID("Outlook.Application")
+                ?? throw new InvalidOperationException("Outlook no está instalado o no está registrado como COM.");
+
+            _app = Activator.CreateInstance(t)!;
             var ns = _app.GetNamespace("MAPI");
-            MAPIFolder? folder = null;
-            try
+
+            dynamic? folder;
+            try   { folder = GetFolderByPath(ns, carpetaOutlook, cuentaOutlook); }
+            catch (Exception ex)
             {
-                folder = GetFolderByPath(ns, carpetaOutlook);
-            }
-            catch (System.Exception ex)
-            {
-                Log($"No se pudo abrir la carpeta de Outlook: {carpetaOutlook}. {ex.Message}", log);
+                log?.Invoke($"No se pudo abrir la carpeta de Outlook '{carpetaOutlook}': {ex.Message}");
                 return null;
             }
 
             if (folder == null)
             {
-                Log($"Carpeta no encontrada: {carpetaOutlook}", log);
+                log?.Invoke($"Carpeta no encontrada en Outlook: {carpetaOutlook}");
                 return null;
             }
 
             Directory.CreateDirectory(carpetaDestino);
+
             var items = folder.Items;
             items.Sort("[ReceivedTime]", true);
+            int total = (int)items.Count;
 
-            for (int i = items.Count; i >= 1; i--)
+            log?.Invoke($"Revisando {total} correo(s) en la carpeta '{carpetaOutlook}'...");
+
+            for (int i = total; i >= 1; i--)
             {
                 try
                 {
                     var item = items[i];
-                    if (item is not MailItem mail) continue;
-                    if (mail.UnRead != true) continue;
-                    if (!mail.Subject.Contains(asuntoBusqueda, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (mail.Attachments.Count == 0) continue;
+                    if ((int)item.Class != OlMailClass)       continue;
+                    if (!(bool)item.UnRead)                   continue;
+                    if ((int)item.Attachments.Count == 0)     continue;
 
-                    // Guardar primer adjunto
-                    var adj = mail.Attachments[1];
-                    var ext = Path.GetExtension(adj.FileName);
+                    var subject = (string)item.Subject;
+                    if (!subject.Contains(asuntoBusqueda, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var adj      = item.Attachments[1];
+                    var fileName = (string)adj.FileName;
+                    var ext      = Path.GetExtension(fileName);
                     if (string.IsNullOrEmpty(ext)) ext = ".xlsx";
-                    var destPath = Path.Combine(carpetaDestino, Path.GetFileNameWithoutExtension(adj.FileName) + ext);
+
+                    var destPath = Path.Combine(carpetaDestino,
+                        Path.GetFileNameWithoutExtension(fileName) + ext);
                     adj.SaveAsFile(destPath);
-                    mail.UnRead = false;
-                    mail.Save();
-                    Marshal.ReleaseComObject(mail);
-                    Log($"Correo encontrado. Adjunto guardado: {destPath}", log);
+                    item.UnRead = false;
+                    item.Save();
+                    Marshal.ReleaseComObject(item);
+
+                    log?.Invoke($"Correo encontrado: '{subject}'. Adjunto guardado: {destPath}");
                     return destPath;
                 }
-                catch (System.Exception ex)
+                catch (Exception ex)
                 {
-                    Log($"Error al procesar correo: {ex.Message}", log);
+                    log?.Invoke($"Error al procesar correo #{i}: {ex.Message}");
                 }
             }
 
-            Log("No se encontró ningún correo que cumpla los criterios (no leído, con adjunto, asunto con la fecha).", log);
+            log?.Invoke("No se encontró correo no leído con adjunto y asunto coincidente.");
             return null;
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            Log($"Error al conectar con Outlook: {ex.Message}", log);
+            log?.Invoke($"Error al conectar con Outlook: {ex.Message}");
             return null;
         }
-        finally
-        {
-            if (_app != null)
-            {
-                Marshal.ReleaseComObject(_app);
-                _app = null;
-            }
-        }
+        finally { LiberarApp(); }
     }
 
-    /// <summary>Envía un correo con el cliente por defecto de Outlook.</summary>
-    public bool EnviarCorreo(string para, string asunto, string cuerpoHtml, Action<string>? log = null)
+    // ── Envío de correo ───────────────────────────────────────────────────────
+
+    public bool EnviarCorreo(
+        string para,
+        string asunto,
+        string cuerpoHtml,
+        Action<string>? log = null)
     {
         try
         {
-            _app = new Microsoft.Office.Interop.Outlook.Application();
-            var mail = _app.CreateItem(Microsoft.Office.Interop.Outlook.OlItemType.olMailItem) as MailItem;
-            if (mail == null) { Log("No se pudo crear el mensaje.", log); return false; }
-            mail.To = para;
-            mail.Subject = asunto;
+            var t = Type.GetTypeFromProgID("Outlook.Application")
+                ?? throw new InvalidOperationException("Outlook no está instalado.");
+
+            _app = Activator.CreateInstance(t)!;
+            var mail = _app.CreateItem(OlMailItem);
+            mail.To       = para;
+            mail.Subject  = asunto;
             mail.HTMLBody = cuerpoHtml;
             mail.Send();
             Marshal.ReleaseComObject(mail);
-            Log($"Correo enviado a {para}.", log);
+            log?.Invoke($"Correo enviado a: {para}");
             return true;
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            Log($"Error al enviar correo: {ex.Message}", log);
+            log?.Invoke($"Error al enviar correo: {ex.Message}");
             return false;
         }
-        finally
-        {
-            if (_app != null)
-            {
-                Marshal.ReleaseComObject(_app);
-                _app = null;
-            }
-        }
+        finally { LiberarApp(); }
     }
 
-    private static MAPIFolder? GetFolderByPath(NameSpace ns, string path)
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static dynamic? GetFolderByPath(dynamic ns, string path, string? cuentaRaiz = null)
     {
         var parts = path.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
-        MAPIFolder? folder = ns.Folders[1];
-        for (int i = 0; i < parts.Length; i++)
+        dynamic folder;
+
+        if (string.IsNullOrWhiteSpace(cuentaRaiz))
         {
-            var name = parts[i];
-            MAPIFolder? found = null;
-            foreach (MAPIFolder f in folder.Folders)
+            folder = ns.Folders[1];
+        }
+        else
+        {
+            var roots = ns.Folders;
+            int total = (int)roots.Count;
+            dynamic? found = null;
+            for (int i = 1; i <= total; i++)
             {
-                if (string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase))
+                var f = roots[i];
+                if (string.Equals((string)f.Name, cuentaRaiz.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    found = f;
+                    break;
+                }
+            }
+            if (found == null)
+                return null;
+            folder = found;
+        }
+
+        foreach (var part in parts)
+        {
+            dynamic? found      = null;
+            var      subFolders = folder.Folders;
+            int      count      = (int)subFolders.Count;
+
+            for (int j = 1; j <= count; j++)
+            {
+                dynamic f = subFolders[j];
+                if (string.Equals((string)f.Name, part, StringComparison.OrdinalIgnoreCase))
                 {
                     found = f;
                     break;
@@ -137,5 +242,12 @@ public class OutlookService : IDisposable
         return folder;
     }
 
-    public void Dispose() => _app = null;
+    private void LiberarApp()
+    {
+        if (_app == null) return;
+        try { Marshal.ReleaseComObject(_app); } catch { }
+        _app = null;
+    }
+
+    public void Dispose() => LiberarApp();
 }

@@ -102,12 +102,15 @@ public class ProcessService
             }
             log?.Invoke($"Base actualizada. Bajas encontradas: {bajas.Count}");
 
+            if (bajas.Count == 0)
+                return null;
+
             return BuildTablaHtmlBajas(bajas);
         }
         catch (Exception ex)
         {
             log?.Invoke($"Error en ProcesarBajas: {ex.Message}");
-            return null;
+            throw;
         }
     }
 

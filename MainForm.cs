@@ -10,6 +10,7 @@ public class MainForm : Form
     private readonly Button _btnRun;
     private readonly Button _btnGuardarConfig;
     private readonly Button _btnCancel;
+    private readonly Button _btnCrearCarpetas;
     private CancellationTokenSource? _cts;
 
     // ── Paleta ─────────────────────────────────────────────
@@ -21,6 +22,7 @@ public class MainForm : Form
     private static readonly Color BtnSaveColor   = Color.FromArgb(0, 120, 212);
     private static readonly Color BtnRunColor    = Color.FromArgb(16, 124, 16);
     private static readonly Color BtnCancelColor = Color.FromArgb(162, 36, 28);
+    private static readonly Color BtnFolderColor = Color.FromArgb(90, 70, 160);
 
     // Paleta del log (terminal oscuro)
     private static readonly Color LogBg        = Color.FromArgb(14, 16, 26);
@@ -36,8 +38,11 @@ public class MainForm : Form
         Size = new Size(1060, 720);
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(820, 540);
+        WindowState = FormWindowState.Maximized;
         BackColor = Color.White;
         Font = new Font("Segoe UI", 9f);
+
+        AsignarIcono();
 
         // ── Raíz: 3 filas (header | contenido | footer) ──────
         var root = new TableLayoutPanel
@@ -55,12 +60,7 @@ public class MainForm : Form
 
         // ── HEADER ────────────────────────────────────────────
         var header = new Panel { Dock = DockStyle.Fill, BackColor = HeaderBg };
-        var accentStripe = new Panel
-        {
-            Dock = DockStyle.Left,
-            Width = 4,
-            BackColor = HeaderAccent
-        };
+        var accentStripe = new Panel { Dock = DockStyle.Left, Width = 4, BackColor = HeaderAccent };
         var lblTitle = new Label
         {
             Text = "Notificador de Bajas de Usuarios",
@@ -71,7 +71,7 @@ public class MainForm : Form
         };
         var lblSub = new Label
         {
-            Text = "Hitss  ·  Detección de ceses y envío de notificaciones automáticas",
+            Text = $"Hitss  ·  v{UpdateService.CurrentVersion.ToString(3)}  ·  Detección de ceses y envío de notificaciones automáticas",
             Font = new Font("Segoe UI", 8f),
             ForeColor = Color.FromArgb(136, 152, 180),
             AutoSize = true,
@@ -94,12 +94,7 @@ public class MainForm : Form
 
         // Panel izquierdo: Configuración
         var leftWrap = new Panel { Dock = DockStyle.Fill, BackColor = SurfaceAlt };
-        var leftBar = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 36,
-            BackColor = SurfaceAlt
-        };
+        var leftBar = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = SurfaceAlt };
         var leftBarBorder = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = BorderColor };
         var lblCfgHdr = new Label
         {
@@ -113,12 +108,7 @@ public class MainForm : Form
         leftBar.Controls.Add(leftBarBorder);
         leftBar.Controls.Add(lblCfgHdr);
 
-        var configScroll = new Panel
-        {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
-            Padding = new Padding(10, 8, 10, 8)
-        };
+        var configScroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10, 8, 10, 8) };
         _configPanel = new ConfigPanel();
         configScroll.Controls.Add(_configPanel);
         leftWrap.Controls.Add(configScroll);
@@ -127,12 +117,7 @@ public class MainForm : Form
 
         // Panel derecho: Log
         var rightWrap = new Panel { Dock = DockStyle.Fill, BackColor = Color.White };
-        var rightBar = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 36,
-            BackColor = Color.White
-        };
+        var rightBar = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = Color.White };
         var rightBarBorder = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = BorderColor };
         var lblLogHdr = new Label
         {
@@ -166,9 +151,10 @@ public class MainForm : Form
         var footer = new Panel { Dock = DockStyle.Fill, BackColor = SurfaceAlt };
         var footerBorder = new Panel { Dock = DockStyle.Top, Height = 1, BackColor = BorderColor };
 
-        _btnGuardarConfig = MakeBtn("Guardar configuración", BtnSaveColor, 176, 32);
-        _btnRun           = MakeBtn("Ejecutar proceso",      BtnRunColor,  148, 32);
-        _btnCancel        = MakeBtn("Cancelar",              BtnCancelColor, 102, 32);
+        _btnGuardarConfig  = MakeBtn("Guardar configuración", BtnSaveColor,   176, 32);
+        _btnRun            = MakeBtn("Ejecutar proceso",      BtnRunColor,    148, 32);
+        _btnCancel         = MakeBtn("Cancelar",              BtnCancelColor, 100, 32);
+        _btnCrearCarpetas  = MakeBtn("Crear estructura de carpetas", BtnFolderColor, 210, 32);
         _btnCancel.Visible = false;
 
         var btnFlow = new FlowLayoutPanel
@@ -182,6 +168,12 @@ public class MainForm : Form
         btnFlow.Controls.Add(_btnGuardarConfig);
         btnFlow.Controls.Add(_btnRun);
         btnFlow.Controls.Add(_btnCancel);
+
+        // Separador visual entre acciones principales y utilitarios
+        var sep = new Panel { Width = 16, Height = 32, BackColor = Color.Transparent };
+        btnFlow.Controls.Add(sep);
+        btnFlow.Controls.Add(_btnCrearCarpetas);
+
         footer.Controls.Add(footerBorder);
         footer.Controls.Add(btnFlow);
 
@@ -195,15 +187,23 @@ public class MainForm : Form
         _btnGuardarConfig.Click += (_, _) => GuardarConfig();
         _btnRun.Click           += (_, _) => EjecutarProceso();
         _btnCancel.Click        += (_, _) => _cts?.Cancel();
+        _btnCrearCarpetas.Click += (_, _) => CrearEstructuraCarpetas();
 
-        Load += (_, _) =>
+        Load += async (_, _) =>
         {
-            split.Panel1MinSize = 340;
+            // Panel1 (config) necesita al menos el ancho del ConfigPanel (520) para no cortar opciones
+            split.Panel1MinSize = 520;
             split.Panel2MinSize = 260;
-            split.SplitterDistance = Math.Clamp(440, split.Panel1MinSize, Width - split.Panel2MinSize - split.SplitterWidth);
+            // Por defecto dar suficiente espacio al panel de configuración para ver todas las opciones
+            var distanciaInicial = 560;
+            split.SplitterDistance = Math.Clamp(distanciaInicial, split.Panel1MinSize,
+                Math.Max(split.Panel1MinSize, Width - split.Panel2MinSize - split.SplitterWidth));
+
             var cfg = ConfigService.Load();
             _configPanel.LoadFrom(cfg);
             Log("Configuración cargada. Revisa las rutas y el asunto (ej. CESE DE PERSONAL - ).");
+
+            await CheckForUpdatesAsync();
         };
     }
 
@@ -225,6 +225,75 @@ public class MainForm : Form
         return btn;
     }
 
+    // ── Auto-update ───────────────────────────────────────────
+    private async Task CheckForUpdatesAsync()
+    {
+        Log("Buscando actualizaciones...");
+        var release = await UpdateService.CheckAsync();
+
+        if (!release.HasUpdate)
+        {
+            Log("La aplicación está actualizada.");
+            return;
+        }
+
+        Log($"Nueva versión disponible: {release.Tag} (actual: v{UpdateService.CurrentVersion.ToString(3)})");
+
+        var msg = $"Hay una nueva versión disponible: {release.Tag}\n" +
+                  $"Versión instalada: v{UpdateService.CurrentVersion.ToString(3)}\n\n" +
+                  $"¿Deseas actualizar ahora?";
+
+        var result = MessageBox.Show(msg, "Actualización disponible",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1);
+
+        if (result == DialogResult.Yes)
+            await UpdateService.ApplyAsync(release, Log);
+    }
+
+    // ── Crear estructura de carpetas ──────────────────────────
+    private void CrearEstructuraCarpetas()
+    {
+        // Proponer D:\BotHitss si la unidad existe, si no C:\BotHitss
+        var driveDefault = Directory.Exists(@"D:\") ? @"D:\BotHitss" : @"C:\BotHitss";
+
+        using var dlg = new FolderBrowserDialog
+        {
+            Description        = "Selecciona la carpeta raíz donde se creará la estructura de BotHitss",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = true,
+            SelectedPath       = Path.GetDirectoryName(driveDefault)!
+        };
+
+        if (dlg.ShowDialog() != DialogResult.OK) return;
+
+        var root = Path.Combine(dlg.SelectedPath, "BotHitss");
+        var carpetas = new[]
+        {
+            Path.Combine(root, "Temporal"),
+            Path.Combine(root, "Usuario"),
+            Path.Combine(root, "Base"),
+            Path.Combine(root, "Backup")
+        };
+
+        try
+        {
+            foreach (var c in carpetas)
+                Directory.CreateDirectory(c);
+
+            _configPanel.SetFolderStructure(root);
+
+            Log($"Estructura de carpetas creada en {root}:");
+            foreach (var c in carpetas)
+                Log($"  ✓ {c}");
+            Log("Campos actualizados. Recuerda guardar la configuración.");
+        }
+        catch (Exception ex)
+        {
+            Log($"Error al crear carpetas: {ex.Message}");
+        }
+    }
+
+    // ── Guardar config ────────────────────────────────────────
     private void GuardarConfig()
     {
         var cfg = _configPanel.SaveTo();
@@ -232,17 +301,21 @@ public class MainForm : Form
         Log("Configuración guardada en config.json.");
     }
 
+    // ── Log coloreado ─────────────────────────────────────────
     private void Log(string message)
     {
         if (_logBox.IsDisposed) return;
 
         var isError   = message.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0;
-        var isSuccess = !isError && (message.Contains("finalizado") || message.Contains("guardada") ||
-                                     message.Contains("movido")     || message.Contains("cargada")  ||
-                                     message.Contains("limpiada"));
-        var isWarning = !isError && !isSuccess && (message.Contains("cancelado") ||
-                                                   message.Contains("No se encontró"));
-        var msgColor  = isError ? LogError : isSuccess ? LogSuccess : isWarning ? LogWarning : LogDefault;
+        var isSuccess = !isError && (message.Contains("finalizado")    || message.Contains("guardada")   ||
+                                     message.Contains("movido")        || message.Contains("cargada")    ||
+                                     message.Contains("limpiada")      || message.Contains("creada")     ||
+                                     message.Contains("actualizada")   || message.Contains("✓"));
+        var isWarning = !isError && !isSuccess && (message.Contains("cancelado")    ||
+                                                   message.Contains("No se encontró") ||
+                                                   message.Contains("actualizaciones") ||
+                                                   message.Contains("disponible"));
+        var msgColor = isError ? LogError : isSuccess ? LogSuccess : isWarning ? LogWarning : LogDefault;
 
         void Append()
         {
@@ -259,6 +332,7 @@ public class MainForm : Form
         else Append();
     }
 
+    // ── Ejecutar proceso ──────────────────────────────────────
     private async void EjecutarProceso()
     {
         _btnRun.Enabled    = false;
@@ -282,13 +356,16 @@ public class MainForm : Form
             {
                 using var outlook = new OutlookService();
                 rutaAdjunto = outlook.BuscarYGuardarAdjunto(
-                    config.OutlookCarpeta, asuntoBusqueda, config.FolderTemporal, Log);
+                    config.OutlookCarpeta, asuntoBusqueda, config.FolderTemporal,
+                    string.IsNullOrWhiteSpace(config.OutlookCuenta) ? null : config.OutlookCuenta.Trim(),
+                    Log);
             }, _cts.Token);
 
             if (string.IsNullOrEmpty(rutaAdjunto))
             {
                 Log("No se encontró correo. Enviando aviso al destinatario.");
-                var cuerpoAviso = $"<p>No se ha encontrado correo cuyo asunto contenga: " +
+                var cuerpoAviso =
+                    $"<p>No se ha encontrado correo cuyo asunto contenga: " +
                     $"'{System.Net.WebUtility.HtmlEncode(asuntoBusqueda)}', " +
                     $"se procede a detener el proceso.</p>" +
                     $"<p>Saludos cordiales.</p>" +
@@ -313,11 +390,26 @@ public class MainForm : Form
                 htmlTabla = svc.ProcesarBajas(rutaDestinoUser, config, Log);
             }, _cts.Token);
 
-            if (!string.IsNullOrEmpty(htmlTabla) && !string.IsNullOrEmpty(config.CorreoTo))
+            if (!string.IsNullOrEmpty(config.CorreoTo))
             {
-                var asunto = $"{config.AsuntoCorreoS} - {DateTime.Now:dd/MM/yyyy}";
                 using var outlook = new OutlookService();
-                outlook.EnviarCorreo(config.CorreoTo, asunto, htmlTabla, Log);
+                if (!string.IsNullOrEmpty(htmlTabla))
+                {
+                    var asunto = $"{config.AsuntoCorreoS} - {DateTime.Now:dd/MM/yyyy}";
+                    outlook.EnviarCorreo(config.CorreoTo, asunto, htmlTabla, Log);
+                }
+                else
+                {
+                    var cuerpoSinBajas =
+                        "<p>Buenas tardes estimados,</p><p></p>" +
+                        "<p>En el procesamiento del día <strong>" + DateTime.Now.ToString("dd/MM/yyyy") + "</strong> " +
+                        "no se encontraron cuentas a dar de baja.</p><p></p>" +
+                        "<p>Saludos cordiales.</p><p></p>" +
+                        "<p><strong> - Esta es una notificación automática, por favor, no responder este correo. - </strong></p>";
+                    outlook.EnviarCorreo(config.CorreoTo,
+                        "ROBOT | No se encontraron bajas - " + DateTime.Now.ToString("dd/MM/yyyy"),
+                        cuerpoSinBajas, Log);
+                }
             }
 
             Log("Proceso finalizado correctamente.");
@@ -332,7 +424,8 @@ public class MainForm : Form
             try
             {
                 var config = _configPanel.SaveTo();
-                var cuerpoError = $"<p>Se ha presentado el siguiente error: " +
+                var cuerpoError =
+                    $"<p>Se ha presentado el siguiente error: " +
                     $"{System.Net.WebUtility.HtmlEncode(ex.ToString())}. " +
                     $"Se procede a detener el proceso.</p>" +
                     $"<p>Saludos cordiales.</p>" +
@@ -349,5 +442,54 @@ public class MainForm : Form
             _btnCancel.Visible = false;
             _cts?.Dispose();
         }
+    }
+
+    private void AsignarIcono()
+    {
+        try
+        {
+            var baseDir = Application.StartupPath;
+            var iconDir = Path.Combine(baseDir, "icon");
+            if (!Directory.Exists(iconDir)) return;
+
+            // Preferir app.ico, luego app.png, luego cualquier .ico o .png en icon\
+            var icoPath = Path.Combine(iconDir, "app.ico");
+            if (File.Exists(icoPath))
+            {
+                using var ico = new Icon(icoPath);
+                Icon = (Icon)ico.Clone();
+                return;
+            }
+
+            var pngPath = Path.Combine(iconDir, "app.png");
+            if (File.Exists(pngPath))
+            {
+                UsarIconoDesdePng(pngPath);
+                return;
+            }
+
+            var primerIco = Directory.GetFiles(iconDir, "*.ico").FirstOrDefault();
+            if (primerIco != null)
+            {
+                using var ico = new Icon(primerIco);
+                Icon = (Icon)ico.Clone();
+                return;
+            }
+
+            var primerPng = Directory.GetFiles(iconDir, "*.png").FirstOrDefault();
+            if (primerPng != null)
+                UsarIconoDesdePng(primerPng);
+        }
+        catch { /* icono opcional */ }
+    }
+
+    private void UsarIconoDesdePng(string pngPath)
+    {
+        // La barra de tareas usa iconos 32x32 (y 16x16). Un PNG grande no se muestra bien;
+        // redimensionamos a 32x32 para que el botón de la barra de tareas lo muestre correctamente.
+        using var bmpOrig = new Bitmap(pngPath);
+        using var bmp = new Bitmap(bmpOrig, new Size(32, 32));
+        using var icon = Icon.FromHandle(bmp.GetHicon());
+        Icon = (Icon)icon.Clone();
     }
 }

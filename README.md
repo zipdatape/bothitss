@@ -66,6 +66,30 @@ Aplicación de escritorio en C# (Windows Forms) que replica el flujo del proceso
 - En el primer arranque se creará `config.json` al guardar la configuración; configura las rutas y la carpeta de Outlook según ese equipo.
 - **Outlook** debe estar instalado y configurado; la app usa la cuenta por defecto para leer y enviar.
 
+## Actualizaciones automáticas y releases en GitHub
+
+Al **iniciar** la aplicación se consulta si hay una versión más nueva en el repositorio configurado (`zipdatape/bothitss`). La detección usa la **última release publicada** en GitHub, no solo los tags.
+
+### Qué hacer para que los usuarios reciban la actualización
+
+1. **Crear una Release en GitHub** (no basta con push ni con crear solo un tag):
+   - Repo: **https://github.com/zipdatape/bothitss**
+   - Ir a **Releases** → **Create a new release**.
+
+2. **Tag de la versión** (obligatorio): crear un tag nuevo, ej. **v1.0.1** (con la "v" delante). La app compara este número con la versión instalada; si el tag es mayor, ofrece actualizar.
+
+3. **Assets opcionales**: si subes un **.exe** como asset de la release, la app puede descargarlo e instalarlo. Si no, al aceptar actualizar se abre la página de la release para descargar manualmente.
+
+4. **Publicar la release**: Publish release. A partir de ahí, instalaciones con versión menor verán "Nueva versión disponible" al abrir.
+
+| Acción en GitHub | Efecto |
+|------------------|--------|
+| Crear **Release** con tag **v1.0.1** (o superior) | La app detecta actualización al iniciar. |
+| Añadir **.exe** como asset | La app puede descargar e instalar al aceptar. |
+| Solo push de código (sin release) | No se detecta actualización. |
+
+URL que usa la app: `https://api.github.com/repos/zipdatape/bothitss/releases/latest`.
+
 ## Notas
 
 - El flujo es equivalente al del proceso UiPath (carpeta C.H_BAJAS, asunto + fecha, adjuntos, base CSV, backup y correo de notificación).

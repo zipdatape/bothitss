@@ -17,3 +17,9 @@ config.json
 # OS
 Thumbs.db
 desktop.ini
+
+# Instalador y publicación
+dist/
+publish/
+Setup/*.pfx
+Setup/PublishedFiles.wxs

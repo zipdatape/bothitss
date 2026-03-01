@@ -19,7 +19,9 @@ public class AppConfig
     public string FileBkp { get; set; } = "BASE HITSS BKP";
     public string CorreoTo { get; set; } = "";
     public string AsuntoCorreoS { get; set; } = "Notificación de Bajas";
-    /// <summary>Carpeta de Outlook donde buscar (ej. "Bandeja de entrada\\C.H_BAJAS")</summary>
+    /// <summary>Cuenta/carpeta raíz de Outlook donde buscar (vacío = primera cuenta).</summary>
+    public string OutlookCuenta { get; set; } = "";
+    /// <summary>Carpeta de Outlook donde buscar (ej. "Bandeja de entrada\\C.H_BAJAS").</summary>
     public string OutlookCarpeta { get; set; } = "Bandeja de entrada\\C.H_BAJAS";
 
     public Dictionary<string, string> ToDictionary()

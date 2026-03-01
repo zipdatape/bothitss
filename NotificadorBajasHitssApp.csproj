@@ -6,16 +6,29 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon></ApplicationIcon>
+    <!-- Icono del .exe: local o compartido con proyecto UiPath -->
+    <ApplicationIcon Condition="Exists('icon\app.ico')">icon\app.ico</ApplicationIcon>
+    <ApplicationIcon Condition="!Exists('icon\app.ico') and Exists('..\Notificador de Bajas de Usuarios Hitss\icon\app.ico')">..\Notificador de Bajas de Usuarios Hitss\icon\app.ico</ApplicationIcon>
     <StartupObject>NotificadorBajasHitssApp.Program</StartupObject>
     <AssemblyName>NotificadorBajasHitss</AssemblyName>
     <RootNamespace>NotificadorBajasHitssApp</RootNamespace>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0</AssemblyVersion>
+    <FileVersion>1.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="icon\*.ico" CopyToOutputDirectory="PreserveNewest" Link="icon\%(Filename)%(Extension)" />
+    <Content Include="icon\*.png" CopyToOutputDirectory="PreserveNewest" Link="icon\%(Filename)%(Extension)" />
+    <!-- Iconos compartidos con el proyecto UiPath -->
+    <Content Condition="Exists('..\Notificador de Bajas de Usuarios Hitss\icon\app.ico')" Include="..\Notificador de Bajas de Usuarios Hitss\icon\app.ico" CopyToOutputDirectory="PreserveNewest" Link="icon\app.ico" />
+    <Content Condition="Exists('..\Notificador de Bajas de Usuarios Hitss\icon\icon.png')" Include="..\Notificador de Bajas de Usuarios Hitss\icon\icon.png" CopyToOutputDirectory="PreserveNewest" Link="icon\icon.png" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.102.2" />
     <PackageReference Include="CsvHelper" Version="33.0.1" />
-    <PackageReference Include="Microsoft.Office.Interop.Outlook" Version="15.0.4797.1004" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
+    <!-- Outlook vía COM late-binding (dynamic): no requiere NuGet de Interop ni office.dll -->
   </ItemGroup>
 
 </Project>

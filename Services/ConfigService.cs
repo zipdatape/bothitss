@@ -8,7 +8,8 @@ public static class ConfigService
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true   // permite leer tanto camelCase como PascalCase
     };
 
     public static string GetConfigPath()
@@ -25,7 +26,7 @@ public static class ConfigService
         try
         {
             var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<AppConfig>(json) ?? new AppConfig();
+            return JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
         }
         catch
         {

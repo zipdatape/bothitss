@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WiX 4 – Instalador MSI de Notificador Bajas Hitss
+  Instala en C:\ProgramData\Hitss\NotificadorBajasHitss (sin UAC al ejecutar).
+  Para construir: ejecuta build-installer.ps1
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package Name="Notificador Bajas Hitss"
+           Manufacturer="Hitss"
+           Version="$(Version)"
+           UpgradeCode="B4A3E2D1-F5C6-4789-8A0B-1C2D3E4F5A6B"
+           Scope="perMachine">
+
+    <SummaryInformation
+      Description="Notificador de Bajas de Usuarios Hitss"
+      Keywords="Hitss, Bajas, Notificador, RPA" />
+
+    <!-- Actualizaciones: desinstala la versión anterior automáticamente -->
+    <MajorUpgrade
+      DowngradeErrorMessage="Ya existe una versión más reciente instalada. Desinstala la versión anterior primero." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ── Características ─────────────────────────────────── -->
+    <Feature Id="ProductFeature" Title="Notificador Bajas Hitss" Level="1">
+      <ComponentGroupRef Id="PublishFiles" />
+      <ComponentRef Id="ShortcutDesktop" />
+      <ComponentRef Id="ShortcutStartMenu" />
+    </Feature>
+
+    <!-- ── Directorios ─────────────────────────────────────── -->
+    <!-- Instalación en C:\ProgramData\Hitss\NotificadorBajasHitss (perMachine: un solo admin para instalar; luego cualquier usuario ejecuta sin UAC).
+         Permisos de escritura para Users permiten guardar config y auto-actualización. -->
+    <!-- C:\ProgramData\Hitss\NotificadorBajasHitss. Tras instalar, dar permisos de escritura a Users si la app debe actualizarse. -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="HitssFolder" Name="Hitss">
+        <Directory Id="INSTALLFOLDER" Name="NotificadorBajasHitss" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Acceso directo en Escritorio (todos los usuarios) -->
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="ShortcutDesktop"
+                 Guid="C3D4E5F6-A7B8-9012-CDEF-123456789012">
+        <Shortcut Id="DesktopSC"
+                  Name="Notificador Bajas Hitss"
+                  Description="Notificador de Bajas de Usuarios Hitss"
+                  Target="[INSTALLFOLDER]NotificadorBajasHitss.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveDesktop" Directory="DesktopFolder" On="uninstall" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Hitss\NotificadorBajasHitss"
+                       Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <!-- Acceso directo en Menú Inicio (todos los usuarios) -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppMenuFolder" Name="Hitss">
+        <Component Id="ShortcutStartMenu"
+                   Guid="D4E5F6A7-B8C9-0123-DEF0-234567890123">
+          <Shortcut Id="StartMenuSC"
+                    Name="Notificador Bajas Hitss"
+                    Description="Notificador de Bajas de Usuarios Hitss"
+                    Target="[INSTALLFOLDER]NotificadorBajasHitss.exe"
+                    WorkingDirectory="INSTALLFOLDER" />
+          <RemoveFolder Id="RemoveAppMenuFolder" Directory="AppMenuFolder" On="uninstall" />
+          <RegistryValue Root="HKLM"
+                         Key="Software\Hitss\NotificadorBajasHitss"
+                         Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+  </Package>
+</Wix>
