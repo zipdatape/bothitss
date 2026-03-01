@@ -1,0 +1,49 @@
+# Al hacer push de un tag v* (ej. v1.0.1), construye la app, genera el MSI y publica una Release con los artefactos.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Versión desde tag
+        id: version
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = $tag.TrimStart('v', 'V')
+          echo "VERSION=$ver" >> $env:GITHUB_OUTPUT
+          echo "Version para MSI: $ver"
+
+      - name: Instalar WiX 4
+        run: dotnet tool install --global wix --version 4.0.0
+
+      - name: Generar instalador (MSI)
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -Version "${{ steps.version.outputs.VERSION }}"
+        env:
+          # Sin certificado en CI: el script omite la firma si no hay signtool/cert
+          CI: true
+
+      - name: Crear Release y subir artefactos
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          draft: false
+          generate_release_notes: true
+          files: |
+            dist/NotificadorBajasHitss-${{ steps.version.outputs.VERSION }}.msi
+            publish/NotificadorBajasHitss.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

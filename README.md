@@ -90,6 +90,23 @@ Al **iniciar** la aplicación se consulta si hay una versión más nueva en el r
 
 URL que usa la app: `https://api.github.com/repos/zipdatape/bothitss/releases/latest`.
 
+### Automatizar con GitHub Actions
+
+El repositorio incluye un workflow (`.github/workflows/release.yml`) que:
+
+1. **Se ejecuta** cuando haces push de un **tag** que empiece por `v` (ej. `v1.0.1`).
+2. **Construye** la aplicación y genera el MSI con el script `build-installer.ps1`.
+3. **Crea la Release** en GitHub para ese tag y **sube** el MSI y el `.exe` como assets.
+
+Para publicar una nueva versión sin tocar la web de GitHub:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+Tras el push, GitHub Actions construye y publica la release; en unos minutos la release aparecerá en **Releases** con el MSI y el ejecutable adjuntos. Los usuarios que tengan una versión anterior verán la actualización al abrir la app.
+
 ## Notas
 
 - El flujo es equivalente al del proceso UiPath (carpeta C.H_BAJAS, asunto + fecha, adjuntos, base CSV, backup y correo de notificación).
