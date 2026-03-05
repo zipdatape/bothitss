@@ -362,8 +362,14 @@ public class MainForm : Form
             var config = _configPanel.SaveTo();
             ConfigService.Save(config);
 
-            var asuntoBusqueda = config.AsuntoCorreoR.Trim();
-            Log($"Iniciando proceso. Buscando asuntos que contengan: '{asuntoBusqueda}'");
+            // Se busca cualquier correo no leído cuyo asunto contenga el prefijo configurado
+            // (ej. "CESE DE PERSONAL - "). No se filtra por fecha para evitar problemas con
+            // el formato del día (4/03 vs 04/03). El correo más reciente no leído se toma primero.
+            var asuntoEsperado = config.AsuntoCorreoR.Trim();
+            var cuentaInfo = string.IsNullOrWhiteSpace(config.OutlookCuenta)
+                ? "primera cuenta del perfil"
+                : $"cuenta '{config.OutlookCuenta.Trim()}'";
+            Log($"Iniciando proceso. Buscando en {cuentaInfo}, carpeta '{config.OutlookCarpeta}', asunto que contenga: \"{asuntoEsperado}\".");
 
             Directory.CreateDirectory(config.FolderTemporal);
             foreach (var f in Directory.GetFiles(config.FolderTemporal))
@@ -375,7 +381,7 @@ public class MainForm : Form
             {
                 using var outlook = new OutlookService();
                 rutaAdjunto = outlook.BuscarYGuardarAdjunto(
-                    config.OutlookCarpeta, asuntoBusqueda, config.FolderTemporal,
+                    config.OutlookCarpeta, asuntoEsperado, config.FolderTemporal,
                     string.IsNullOrWhiteSpace(config.OutlookCuenta) ? null : config.OutlookCuenta.Trim(),
                     Log);
             }, _cts.Token);
@@ -384,9 +390,10 @@ public class MainForm : Form
             {
                 Log("No se encontró correo. Enviando aviso al destinatario.");
                 var cuerpoAviso =
-                    $"<p>No se ha encontrado correo cuyo asunto contenga: " +
-                    $"'{System.Net.WebUtility.HtmlEncode(asuntoBusqueda)}', " +
-                    $"se procede a detener el proceso.</p>" +
+                    $"<p>No se ha encontrado correo no leído cuyo asunto contenga: " +
+                    $"\"{System.Net.WebUtility.HtmlEncode(asuntoEsperado)}\" " +
+                    $"(buscado en {System.Net.WebUtility.HtmlEncode(cuentaInfo)}, carpeta '{System.Net.WebUtility.HtmlEncode(config.OutlookCarpeta)}'). " +
+                    $"Se procede a detener el proceso.</p>" +
                     $"<p>Saludos cordiales.</p>" +
                     $"<p><strong> - Notificación automática. - </strong></p>";
                 using var outlook = new OutlookService();

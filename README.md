@@ -32,12 +32,13 @@ Aplicación de escritorio en C# (Windows Forms) que replica el flujo del proceso
 1. **Al abrir**, se carga la configuración desde `config.json` (en la misma carpeta que el .exe). Si no existe, se usan valores por defecto.
 2. **Configuración**:  
    - Revisa y edita los campos. En las **carpetas** puedes usar el botón **...** para elegir la ruta con el selector de Windows.  
-   - **Asunto a buscar**: texto fijo que debe aparecer en el asunto (ej. **CESE DE PERSONAL - **). El correo suele llegar como "CESE DE PERSONAL - 26/02/2026"; la app solo filtra por el texto fijo.  
+   - **Asunto a buscar**: texto fijo del asunto (ej. **CESE DE PERSONAL - **). El correo llega como "CESE DE PERSONAL - 27/02/2026" (tras el guion va la fecha).  
+   - **Días a restar**: días que se restan a la fecha de hoy para obtener la **fecha del asunto** a buscar. Ej.: si hoy es 5/03/2026 y pones **1**, la app buscará el correo con asunto "CESE DE PERSONAL - **4**/03/2026" (el del día anterior). Si pones **0**, buscará el de hoy (5/03/2026).  
    - **Carpeta Outlook**: ruta dentro de Outlook (ej.: `Bandeja de entrada\C.H_BAJAS`).
 3. **Guardar configuración**: guarda los cambios en `config.json` para la próxima ejecución.
 4. **Ejecutar proceso**:  
-   - Busca en Outlook (carpeta indicada) correos no leídos con adjunto cuyo asunto contenga **Asunto correo a buscar** + fecha (dd/MM/yyyy).  
-   - Si encuentra uno: guarda el adjunto, lo mueve a la carpeta de usuario, procesa el Excel y la base CSV, hace backup y envía el correo de notificación con la tabla de bajas.  
+   - Calcula la fecha objetivo = hoy − **días a restar** (formato dd/MM/yyyy) y busca **solo** el correo no leído cuyo asunto contenga ese texto completo (ej. "CESE DE PERSONAL - 4/03/2026"). Si hay varios adjuntos, se prioriza .xlsx o .csv.  
+   - Si encuentra uno: guarda ese adjunto, lo mueve a la carpeta de usuario, procesa el archivo (**.xlsx** o **CSV**) y la base CSV, hace backup y envía el correo de notificación con la tabla de bajas.  
    - Si no encuentra: envía un aviso al destinatario indicando que no se encontró el correo.
 5. El **log** en la parte inferior muestra el progreso y posibles errores.
 
@@ -46,10 +47,10 @@ Aplicación de escritorio en C# (Windows Forms) que replica el flujo del proceso
 | Campo | Descripción |
 |-------|-------------|
 | Proceso (nombre) | Nombre del proceso (informativo). |
-| Días a restar (fecha) | Días a restar a hoy para la fecha de búsqueda del asunto (ej.: 1 = ayer). |
+| Días a restar (fecha) | Días que se restan a hoy para la fecha del asunto a buscar. 1 = ayer (ej. hoy 5/03 → busca "CESE DE PERSONAL - 4/03/2026"); 0 = hoy. |
 | Carpeta temporal | Donde se guardan temporalmente los adjuntos. |
 | Carpeta usuario (Excel) | Donde se deja el Excel de bajas (nombre: dd.MM.yy.xlsx). |
-| Asunto correo a buscar | Texto fijo que debe contener el asunto (ej.: **CESE DE PERSONAL - **). La fecha en el correo es dinámica. |
+| Asunto correo a buscar | Texto fijo que debe contener el asunto (ej.: **CESE DE PERSONAL - **). El correo llega como "CESE DE PERSONAL - 27/02/2026"; solo se procesan correos con este asunto. |
 | Carpeta Outlook | Carpeta de Outlook donde buscar (ej.: `Bandeja de entrada\C.H_BAJAS`). |
 | Nombre hoja Excel | Hoja del Excel de bajas a leer. |
 | Carpeta BASE | Carpeta del archivo CSV base. |

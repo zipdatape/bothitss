@@ -93,6 +93,9 @@ public class OutlookService : IDisposable
             _app = Activator.CreateInstance(t)!;
             var ns = _app.GetNamespace("MAPI");
 
+            var cuentaBusqueda = string.IsNullOrWhiteSpace(cuentaOutlook) ? "primera cuenta del perfil" : $"cuenta '{cuentaOutlook}'";
+            log?.Invoke($"Conectado a Outlook. Abriendo carpeta '{carpetaOutlook}' en {cuentaBusqueda}...");
+
             dynamic? folder;
             try   { folder = GetFolderByPath(ns, carpetaOutlook, cuentaOutlook); }
             catch (Exception ex)
@@ -113,7 +116,8 @@ public class OutlookService : IDisposable
             items.Sort("[ReceivedTime]", true);
             int total = (int)items.Count;
 
-            log?.Invoke($"Revisando {total} correo(s) en la carpeta '{carpetaOutlook}'...");
+            var cuentaDesc = string.IsNullOrWhiteSpace(cuentaOutlook) ? "primera cuenta del perfil" : $"cuenta '{cuentaOutlook}'";
+            log?.Invoke($"[{cuentaDesc}] Revisando {total} correo(s) en '{carpetaOutlook}' buscando asunto que contenga \"{asuntoBusqueda}\"...");
 
             for (int i = total; i >= 1; i--)
             {
@@ -125,10 +129,28 @@ public class OutlookService : IDisposable
                     if ((int)item.Attachments.Count == 0)     continue;
 
                     var subject = (string)item.Subject;
+                    // Solo procesar correos cuyo asunto coincida (ej. "CESE DE PERSONAL - 27/02/2026")
                     if (!subject.Contains(asuntoBusqueda, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    var adj      = item.Attachments[1];
+                    // Preferir adjunto .xlsx o .csv si hay varios (evitar tomar PDF u otro por error)
+                    int numAdj = (int)item.Attachments.Count;
+                    dynamic? adj = null;
+                    for (int a = 1; a <= numAdj; a++)
+                    {
+                        var att = item.Attachments[a];
+                        var fn = (string)att.FileName;
+                        var e = Path.GetExtension(fn);
+                        if (string.Equals(e, ".xlsx", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(e, ".csv", StringComparison.OrdinalIgnoreCase))
+                        {
+                            adj = att;
+                            break;
+                        }
+                    }
+                    if (adj == null)
+                        adj = item.Attachments[1];
+
                     var fileName = (string)adj.FileName;
                     var ext      = Path.GetExtension(fileName);
                     if (string.IsNullOrEmpty(ext)) ext = ".xlsx";
@@ -140,7 +162,7 @@ public class OutlookService : IDisposable
                     item.Save();
                     Marshal.ReleaseComObject(item);
 
-                    log?.Invoke($"Correo encontrado: '{subject}'. Adjunto guardado: {destPath}");
+                    log?.Invoke($"Correo con asunto coincidente: \"{subject}\". Adjunto guardado: {destPath}");
                     return destPath;
                 }
                 catch (Exception ex)
@@ -149,7 +171,7 @@ public class OutlookService : IDisposable
                 }
             }
 
-            log?.Invoke("No se encontró correo no leído con adjunto y asunto coincidente.");
+            log?.Invoke($"No se encontró correo no leído con adjunto cuyo asunto contenga \"{asuntoBusqueda}\".");
             return null;
         }
         catch (Exception ex)

@@ -22,7 +22,73 @@ public class ProcessService
         return s;
     }
 
-    /// <summary>Procesa el Excel de bajas (ya en FolderUser con nombre por fecha), actualiza la base CSV y devuelve el HTML de la tabla para el correo.</summary>
+    /// <summary>Indica si el archivo parece un ZIP/Excel por la firma PK (0x50 0x4B).</summary>
+    private static bool EsArchivoZip(string path)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (fs.Length < 2) return false;
+            int b0 = fs.ReadByte();
+            int b1 = fs.ReadByte();
+            return b0 == 0x50 && b1 == 0x4B; // PK
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Obtiene los DNI de bajas desde el adjunto: Excel (.xlsx) o CSV (misma columna DNI, índice 1).</summary>
+    private static HashSet<string> ObtenerDnisBajaDesdeArchivo(string rutaArchivo, Action<string>? log, int colDni = 1, string? sheetName = null)
+    {
+        var dnisBaja = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (EsArchivoZip(rutaArchivo))
+        {
+            using var book = new XLWorkbook(rutaArchivo);
+            var sheet = !string.IsNullOrWhiteSpace(sheetName) ? book.Worksheet(sheetName) : null;
+            sheet ??= book.Worksheets.FirstOrDefault();
+            if (sheet == null) return dnisBaja;
+            var rows = sheet.RangeUsed()?.Rows().Skip(1).ToList() ?? new List<IXLRangeRow>();
+            foreach (var row in rows)
+            {
+                var dni = row.Cell(colDni + 1).GetString().Trim();
+                var dniNorm = NormalizarDni(dni);
+                if (!string.IsNullOrEmpty(dniNorm)) dnisBaja.Add(dniNorm);
+            }
+            log?.Invoke($"Leído como Excel. Filas de bajas: {dnisBaja.Count}");
+            return dnisBaja;
+        }
+        // No es ZIP: intentar como CSV (p. ej. adjunto con extensión .xlsx pero contenido CSV)
+        try
+        {
+            var enc = Encoding.GetEncoding("iso-8859-15");
+            var primeraLinea = File.ReadLines(rutaArchivo, enc).FirstOrDefault() ?? "";
+            // Detectar delimitador: si la primera línea tiene más campos con tab que con coma, usar tab
+            var delimiter = (primeraLinea.Split('\t').Length >= primeraLinea.Split(',').Length && primeraLinea.Contains('\t'))
+                ? "\t"
+                : ",";
+            var csvConfig = new CsvConfiguration(CultureInfo.InvariantCulture) { HasHeaderRecord = true, Delimiter = delimiter };
+            using var reader = new StreamReader(rutaArchivo, enc);
+            using var csv = new CsvReader(reader, csvConfig);
+            csv.Read();
+            csv.ReadHeader();
+            while (csv.Read())
+            {
+                if (csv.TryGetField(colDni, out string? dni))
+                {
+                    var dniNorm = NormalizarDni(dni);
+                    if (!string.IsNullOrEmpty(dniNorm)) dnisBaja.Add(dniNorm);
+                }
+            }
+            log?.Invoke($"Leído como CSV (delimitador: {(delimiter == "\t" ? "tab" : "coma")}). Filas de bajas: {dnisBaja.Count}");
+            return dnisBaja;
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke($"No se pudo leer como CSV: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>Procesa el Excel/CSV de bajas (ya en FolderUser con nombre por fecha), actualiza la base CSV y devuelve el HTML de la tabla para el correo.</summary>
     public string? ProcesarBajas(string rutaExcel, AppConfig config, Action<string>? log = null)
     {
         try
@@ -33,9 +99,8 @@ public class ProcessService
                 return null;
             }
 
-            using var book = new XLWorkbook(rutaExcel);
-            var sheet = book.Worksheet(config.SheetName) ?? book.Worksheets.First();
-            var rows = sheet.RangeUsed()?.Rows().Skip(1).ToList() ?? new List<IXLRangeRow>(); // Skip header
+            // DNI en columna índice 1 (segunda columna: ID SAP, DNI, NOMBRES COMPLETOS, ...)
+            var dnisBaja = ObtenerDnisBajaDesdeArchivo(rutaExcel, log, colDni: 1, sheetName: config.SheetName);
 
             var pathBase = Path.Combine(config.FolderBASE.TrimEnd('\\', '/'), config.FileBase);
             if (!File.Exists(pathBase))
@@ -58,29 +123,16 @@ public class ProcessService
                 }
             }
 
-            int colDniExcel = 1; // Columna del DNI en el Excel (0-based)
-            int colDniBase = 1;  // Columna del DNI en el CSV base (0-based)
+            int colDniBase = 1;
             var bajas = new List<string[]>();
-            var dnisBaja = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var row in rows)
-            {
-                var dniExcel = row.Cell(colDniExcel + 1).GetString().Trim(); // ClosedXML 1-based
-                var dniNorm = NormalizarDni(dniExcel);
-                if (string.IsNullOrEmpty(dniNorm)) continue;
-                dnisBaja.Add(dniNorm);
-            }
-
-            var nuevaBase = new List<string[]>();
             foreach (var row in baseRows)
             {
                 if (row.Length <= colDniBase) continue;
                 var dniBase = NormalizarDni(row[colDniBase]);
                 if (dnisBaja.Contains(dniBase))
                     bajas.Add(row);
-                else
-                    nuevaBase.Add(row);
             }
+            var nuevaBase = baseRows.Where(r => r.Length > colDniBase && !dnisBaja.Contains(NormalizarDni(r[colDniBase]))).ToList();
 
             // Backup
             var folderBkp = config.FolderBCKP.TrimEnd('\\', '/');
