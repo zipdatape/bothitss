@@ -99,7 +99,7 @@ public class ProcessService
                 return null;
             }
 
-            // DNI en columna índice 1 (segunda columna: ID SAP, DNI, NOMBRES COMPLETOS, ...)
+            // DNI en columna índice 1 del archivo de bajas (plantilla Excel/CSV de bajas: ID SAP, DNI, ...).
             var dnisBaja = ObtenerDnisBajaDesdeArchivo(rutaExcel, log, colDni: 1, sheetName: config.SheetName);
 
             var pathBase = Path.Combine(config.FolderBASE.TrimEnd('\\', '/'), config.FileBase);
@@ -109,7 +109,12 @@ public class ProcessService
                 return null;
             }
 
-            var csvConfig = new CsvConfiguration(CultureInfo.InvariantCulture) { HasHeaderRecord = false };
+            // La BASE HITSS.csv real que usas está separada por punto y coma (;) y no tiene cabecera.
+            var csvConfig = new CsvConfiguration(CultureInfo.InvariantCulture)
+            {
+                HasHeaderRecord = false,
+                Delimiter = ";"
+            };
             var baseRows = new List<string[]>();
             using (var reader = new StreamReader(pathBase, Encoding.GetEncoding("iso-8859-15")))
             using (var csv = new CsvReader(reader, csvConfig))
@@ -123,7 +128,9 @@ public class ProcessService
                 }
             }
 
-            int colDniBase = 1;
+            // En la BASE HITSS.csv la primera columna (índice 0) es el DNI (ej. 40418454, E702879, ...).
+            // Por eso aquí el DNI de la base está en la columna 0.
+            int colDniBase = 0;
             var bajas = new List<string[]>();
             foreach (var row in baseRows)
             {
