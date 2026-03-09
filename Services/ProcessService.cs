@@ -53,7 +53,8 @@ public class ProcessService
                 var dniNorm = NormalizarDni(dni);
                 if (!string.IsNullOrEmpty(dniNorm)) dnisBaja.Add(dniNorm);
             }
-            log?.Invoke($"Leído como Excel. Filas de bajas: {dnisBaja.Count}");
+            var sampleExcel = string.Join(", ", dnisBaja.Take(10));
+            log?.Invoke($"Leído como Excel. Filas de bajas: {dnisBaja.Count}. DNIs (muestra): {sampleExcel}");
             return dnisBaja;
         }
         // No es ZIP: intentar como CSV (p. ej. adjunto con extensión .xlsx pero contenido CSV)
@@ -61,10 +62,17 @@ public class ProcessService
         {
             var enc = Encoding.GetEncoding("iso-8859-15");
             var primeraLinea = File.ReadLines(rutaArchivo, enc).FirstOrDefault() ?? "";
-            // Detectar delimitador: si la primera línea tiene más campos con tab que con coma, usar tab
-            var delimiter = (primeraLinea.Split('\t').Length >= primeraLinea.Split(',').Length && primeraLinea.Contains('\t'))
-                ? "\t"
-                : ",";
+            // Detectar delimitador: priorizar el que genere más columnas (tab, ';' o ',')
+            int tabs   = primeraLinea.Split('\t').Length;
+            int semis  = primeraLinea.Split(';').Length;
+            int comas  = primeraLinea.Split(',').Length;
+            string delimiter;
+            if (tabs >= semis && tabs >= comas && primeraLinea.Contains('\t'))
+                delimiter = "\t";
+            else if (semis >= tabs && semis >= comas && primeraLinea.Contains(';'))
+                delimiter = ";";
+            else
+                delimiter = ",";
             var csvConfig = new CsvConfiguration(CultureInfo.InvariantCulture) { HasHeaderRecord = true, Delimiter = delimiter };
             using var reader = new StreamReader(rutaArchivo, enc);
             using var csv = new CsvReader(reader, csvConfig);
@@ -78,7 +86,9 @@ public class ProcessService
                     if (!string.IsNullOrEmpty(dniNorm)) dnisBaja.Add(dniNorm);
                 }
             }
-            log?.Invoke($"Leído como CSV (delimitador: {(delimiter == "\t" ? "tab" : "coma")}). Filas de bajas: {dnisBaja.Count}");
+            var delimName = delimiter == "\t" ? "tab" : delimiter == ";" ? "punto y coma" : "coma";
+            var sampleCsv = string.Join(", ", dnisBaja.Take(10));
+            log?.Invoke($"Leído como CSV (delimitador: {delimName}). Filas de bajas: {dnisBaja.Count}. DNIs (muestra): {sampleCsv}");
             return dnisBaja;
         }
         catch (Exception ex)
@@ -127,18 +137,24 @@ public class ProcessService
                     baseRows.Add(row.ToArray());
                 }
             }
+            log?.Invoke($"Base HITSS leída. Filas totales: {baseRows.Count}. Ejemplo primera fila DNI (col 0): {(baseRows.Count > 0 && baseRows[0].Length > 0 ? baseRows[0][0] : "<sin datos>")}");
 
             // En la BASE HITSS.csv la primera columna (índice 0) es el DNI (ej. 40418454, E702879, ...).
             // Por eso aquí el DNI de la base está en la columna 0.
             int colDniBase = 0;
             var bajas = new List<string[]>();
+            int coincidencias = 0;
             foreach (var row in baseRows)
             {
                 if (row.Length <= colDniBase) continue;
                 var dniBase = NormalizarDni(row[colDniBase]);
                 if (dnisBaja.Contains(dniBase))
+                {
                     bajas.Add(row);
+                    coincidencias++;
+                }
             }
+            log?.Invoke($"Cruce con base: DNIs en bajas = {dnisBaja.Count}, filas en base = {baseRows.Count}, coincidencias encontradas = {coincidencias}.");
             var nuevaBase = baseRows.Where(r => r.Length > colDniBase && !dnisBaja.Contains(NormalizarDni(r[colDniBase]))).ToList();
 
             // Backup
