@@ -120,14 +120,17 @@ public class ProcessService
             }
 
             // La BASE HITSS.csv real que usas está separada por punto y coma (;) y no tiene cabecera.
-            var csvConfig = new CsvConfiguration(CultureInfo.InvariantCulture)
+            var enc = Encoding.GetEncoding(1252);
+            var csvConfigRead = new CsvConfiguration(CultureInfo.InvariantCulture)
             {
                 HasHeaderRecord = false,
-                Delimiter = ";"
+                Delimiter = ";",
+                BadDataFound = null,          // ignorar celdas con comillas sin escapar
+                MissingFieldFound = null,     // ignorar filas con menos columnas de lo esperado
             };
             var baseRows = new List<string[]>();
-            using (var reader = new StreamReader(pathBase, Encoding.GetEncoding("iso-8859-15")))
-            using (var csv = new CsvReader(reader, csvConfig))
+            using (var reader = new StreamReader(pathBase, enc))
+            using (var csv = new CsvReader(reader, csvConfigRead))
             {
                 while (csv.Read())
                 {
@@ -164,9 +167,15 @@ public class ProcessService
             File.Copy(pathBase, pathBkp, true);
             log?.Invoke($"Backup guardado: {pathBkp}");
 
-            // Escribir nueva base
-            using (var writer = new StreamWriter(pathBase, false, Encoding.GetEncoding(1252)))
-            using (var csv = new CsvWriter(writer, csvConfig))
+            // Escribir nueva base (mismo encoding que lectura, sin agregar comillas extra)
+            var csvConfigWrite = new CsvConfiguration(CultureInfo.InvariantCulture)
+            {
+                HasHeaderRecord = false,
+                Delimiter = ";",
+                ShouldQuote = _ => false,     // preservar formato original sin comillas automáticas
+            };
+            using (var writer = new StreamWriter(pathBase, false, enc))
+            using (var csv = new CsvWriter(writer, csvConfigWrite))
             {
                 foreach (var row in nuevaBase)
                 {
