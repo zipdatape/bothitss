@@ -119,19 +119,19 @@ public class ProcessService
                 return null;
             }
 
-            // La BASE HITSS.csv real está separada por punto y coma (;) y no tiene cabecera.
+            // La BASE HITSS.csv está separada por coma (,), sin cabecera, DNI en columna 0.
             // Se procesa en streaming para evitar cargar todo el archivo en RAM.
             var enc = Encoding.GetEncoding(1252);
             var csvCfg = new CsvConfiguration(CultureInfo.InvariantCulture)
             {
                 HasHeaderRecord = false,
-                Delimiter = ";",
+                Delimiter = ",",
                 BadDataFound = null,
                 MissingFieldFound = null,
                 ShouldQuote = _ => false,
             };
 
-            // En la BASE HITSS.csv la primera columna (índice 0) es el DNI.
+            // Columna 0 = DNI en la BASE HITSS.csv (sin cabecera, delimitada por coma).
             const int colDniBase = 0;
             var bajas = new List<string[]>();
             int totalFilas = 0;
