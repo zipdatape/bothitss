@@ -150,18 +150,16 @@ public class ProcessService
             {
                 string? primerDniEjemplo = null;
                 using (var reader = new StreamReader(pathBase, enc))
-                using (var csvR   = new CsvReader(reader, csvCfg))
+                using (var parser = new CsvParser(reader, csvCfg))
                 using (var writer = new StreamWriter(pathTemp, false, enc))
                 using (var csvW   = new CsvWriter(writer, csvCfg))
                 {
-                    while (csvR.Read())
+                    while (parser.Read())
                     {
-                        var row = new List<string>();
-                        for (int i = 0; csvR.TryGetField(i, out string? v); i++)
-                            row.Add(v ?? "");
+                        var arr = parser.Record;
+                        if (arr == null || arr.Length == 0) continue;
 
                         totalFilas++;
-                        var arr    = row.ToArray();
                         var dniRaw = arr.Length > colDniBase ? arr[colDniBase] : "";
                         var dni    = NormalizarDni(dniRaw);
                         if (primerDniEjemplo == null) primerDniEjemplo = dniRaw;
