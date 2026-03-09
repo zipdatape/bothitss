@@ -12,9 +12,9 @@
     <StartupObject>NotificadorBajasHitssApp.Program</StartupObject>
     <AssemblyName>NotificadorBajasHitss</AssemblyName>
     <RootNamespace>NotificadorBajasHitssApp</RootNamespace>
-    <Version>1.0.7</Version>
-    <AssemblyVersion>1.0.7</AssemblyVersion>
-    <FileVersion>1.0.7</FileVersion>
+    <Version>1.0.8</Version>
+    <AssemblyVersion>1.0.8</AssemblyVersion>
+    <FileVersion>1.0.8</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

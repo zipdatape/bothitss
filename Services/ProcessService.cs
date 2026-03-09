@@ -119,71 +119,80 @@ public class ProcessService
                 return null;
             }
 
-            // La BASE HITSS.csv real que usas está separada por punto y coma (;) y no tiene cabecera.
+            // La BASE HITSS.csv real está separada por punto y coma (;) y no tiene cabecera.
+            // Se procesa en streaming para evitar cargar todo el archivo en RAM.
             var enc = Encoding.GetEncoding(1252);
-            var csvConfigRead = new CsvConfiguration(CultureInfo.InvariantCulture)
+            var csvCfg = new CsvConfiguration(CultureInfo.InvariantCulture)
             {
                 HasHeaderRecord = false,
                 Delimiter = ";",
-                BadDataFound = null,          // ignorar celdas con comillas sin escapar
-                MissingFieldFound = null,     // ignorar filas con menos columnas de lo esperado
+                BadDataFound = null,
+                MissingFieldFound = null,
+                ShouldQuote = _ => false,
             };
-            var baseRows = new List<string[]>();
-            using (var reader = new StreamReader(pathBase, enc))
-            using (var csv = new CsvReader(reader, csvConfigRead))
-            {
-                while (csv.Read())
-                {
-                    var row = new List<string>();
-                    for (int i = 0; csv.TryGetField(i, out string? v); i++)
-                        row.Add(v ?? "");
-                    baseRows.Add(row.ToArray());
-                }
-            }
-            log?.Invoke($"Base HITSS leída. Filas totales: {baseRows.Count}. Ejemplo primera fila DNI (col 0): {(baseRows.Count > 0 && baseRows[0].Length > 0 ? baseRows[0][0] : "<sin datos>")}");
 
-            // En la BASE HITSS.csv la primera columna (índice 0) es el DNI (ej. 40418454, E702879, ...).
-            // Por eso aquí el DNI de la base está en la columna 0.
-            int colDniBase = 0;
+            // En la BASE HITSS.csv la primera columna (índice 0) es el DNI.
+            const int colDniBase = 0;
             var bajas = new List<string[]>();
+            int totalFilas = 0;
             int coincidencias = 0;
-            foreach (var row in baseRows)
-            {
-                if (row.Length <= colDniBase) continue;
-                var dniBase = NormalizarDni(row[colDniBase]);
-                if (dnisBaja.Contains(dniBase))
-                {
-                    bajas.Add(row);
-                    coincidencias++;
-                }
-            }
-            log?.Invoke($"Cruce con base: DNIs en bajas = {dnisBaja.Count}, filas en base = {baseRows.Count}, coincidencias encontradas = {coincidencias}.");
-            var nuevaBase = baseRows.Where(r => r.Length > colDniBase && !dnisBaja.Contains(NormalizarDni(r[colDniBase]))).ToList();
 
-            // Backup
+            // Backup antes de modificar
             var folderBkp = config.FolderBCKP.TrimEnd('\\', '/');
             Directory.CreateDirectory(folderBkp);
             var pathBkp = Path.Combine(folderBkp, $"{config.FileBkp}{DateTime.Now:ddMMyyyy}.csv");
             File.Copy(pathBase, pathBkp, true);
             log?.Invoke($"Backup guardado: {pathBkp}");
 
-            // Escribir nueva base (mismo encoding que lectura, sin agregar comillas extra)
-            var csvConfigWrite = new CsvConfiguration(CultureInfo.InvariantCulture)
+            // Streaming: leer original y escribir filtrado a archivo temporal en paralelo.
+            var pathTemp = pathBase + ".tmp";
+            try
             {
-                HasHeaderRecord = false,
-                Delimiter = ";",
-                ShouldQuote = _ => false,     // preservar formato original sin comillas automáticas
-            };
-            using (var writer = new StreamWriter(pathBase, false, enc))
-            using (var csv = new CsvWriter(writer, csvConfigWrite))
-            {
-                foreach (var row in nuevaBase)
+                string? primerDniEjemplo = null;
+                using (var reader = new StreamReader(pathBase, enc))
+                using (var csvR   = new CsvReader(reader, csvCfg))
+                using (var writer = new StreamWriter(pathTemp, false, enc))
+                using (var csvW   = new CsvWriter(writer, csvCfg))
                 {
-                    foreach (var cell in row)
-                        csv.WriteField(cell);
-                    csv.NextRecord();
+                    while (csvR.Read())
+                    {
+                        var row = new List<string>();
+                        for (int i = 0; csvR.TryGetField(i, out string? v); i++)
+                            row.Add(v ?? "");
+
+                        totalFilas++;
+                        var arr    = row.ToArray();
+                        var dniRaw = arr.Length > colDniBase ? arr[colDniBase] : "";
+                        var dni    = NormalizarDni(dniRaw);
+                        if (primerDniEjemplo == null) primerDniEjemplo = dniRaw;
+
+                        if (!string.IsNullOrEmpty(dni) && dnisBaja.Contains(dni))
+                        {
+                            bajas.Add(arr);
+                            coincidencias++;
+                        }
+                        else
+                        {
+                            foreach (var cell in arr) csvW.WriteField(cell);
+                            csvW.NextRecord();
+                        }
+                    }
                 }
+
+                log?.Invoke($"Base HITSS leída. Filas totales: {totalFilas}. Ejemplo DNI primera fila: {primerDniEjemplo ?? "<sin datos>"}");
+                log?.Invoke($"Cruce con base: DNIs en bajas = {dnisBaja.Count}, filas en base = {totalFilas}, coincidencias = {coincidencias}.");
+
+                // Reemplazar original con el filtrado
+                File.Delete(pathBase);
+                File.Move(pathTemp, pathBase);
             }
+            catch
+            {
+                // Si algo falló, eliminar el temporal para no dejar archivos huérfanos
+                if (File.Exists(pathTemp)) try { File.Delete(pathTemp); } catch { }
+                throw;
+            }
+
             log?.Invoke($"Base actualizada. Bajas encontradas: {bajas.Count}");
 
             if (bajas.Count == 0)
